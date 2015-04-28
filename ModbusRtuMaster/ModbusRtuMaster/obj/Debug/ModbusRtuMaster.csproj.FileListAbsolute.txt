@@ -1,0 +1,8 @@
+D:\Project\My\ModbusRtuMaster\ModbusRtuMaster\obj\Debug\ResolveAssemblyReference.cache
+D:\Project\My\ModbusRtuMaster\ModbusRtuMaster\obj\Debug\ModbusRtuMaster.FormMain.resources
+D:\Project\My\ModbusRtuMaster\ModbusRtuMaster\obj\Debug\ModbusRtuMaster.Properties.Resources.resources
+D:\Project\My\ModbusRtuMaster\ModbusRtuMaster\obj\Debug\ModbusRtuMaster.csproj.GenerateResource.Cache
+D:\Project\My\ModbusRtuMaster\ModbusRtuMaster\bin\Debug\ModbusRtuMaster.exe
+D:\Project\My\ModbusRtuMaster\ModbusRtuMaster\bin\Debug\ModbusRtuMaster.pdb
+D:\Project\My\ModbusRtuMaster\ModbusRtuMaster\obj\Debug\ModbusRtuMaster.exe
+D:\Project\My\ModbusRtuMaster\ModbusRtuMaster\obj\Debug\ModbusRtuMaster.pdb
