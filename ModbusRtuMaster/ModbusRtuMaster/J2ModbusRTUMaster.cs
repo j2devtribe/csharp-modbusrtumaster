@@ -197,14 +197,15 @@ namespace J2.Community.Serial.ModbusRTU
         #region Run
         private void Run()
         {
-            ser.PortName = PortName;
-            ser.BaudRate = Baudrate;
-            ser.ReadTimeout = Timeout;
-            ser.WriteTimeout = Timeout;
-            ser.Open();
-
             try
             {
+                ser.PortName = PortName;
+                ser.BaudRate = Baudrate;
+                ser.ReadTimeout = Timeout;
+                ser.WriteTimeout = Timeout;
+                ser.Open();
+
+
                 while (IsRunning)
                 {
                     if (ManualWorkList.Count > 0 || WorkQueue.Count > 0)
@@ -398,10 +399,11 @@ namespace J2.Community.Serial.ModbusRTU
                     }
                     Thread.Sleep(Interval);
                 }
+
+                ser.Close();
             }
             catch (ObjectDisposedException) { }
 
-            ser.Close();
         }
         #endregion
 
