@@ -122,6 +122,8 @@ namespace J2.Community.Serial.ModbusRTU
         Form frm;
         public J2ModbusRTUMaster() { }
         public J2ModbusRTUMaster(Form frm) { this.frm = frm; }
+        public J2ModbusRTUMaster(Form frm, string Port, int Baurate) { this.frm = frm; this.PortName = Port; this.Baudrate = Baudrate; }
+        
 
         #region Start/Stop
         public void Start()
@@ -201,194 +203,203 @@ namespace J2.Community.Serial.ModbusRTU
             ser.WriteTimeout = Timeout;
             ser.Open();
 
-            while (IsRunning)
+            try
             {
-                if (ManualWorkList.Count > 0 || WorkQueue.Count > 0)
+                while (IsRunning)
                 {
-                    Work w = null;
-                    bool bRepeat = true;
-                    int nTimeoutCount = 0;
+                    if (ManualWorkList.Count > 0 || WorkQueue.Count > 0)
+                    {
+                        Work w = null;
+                        bool bRepeat = true;
+                        int nTimeoutCount = 0;
 
-                    #region GetWork
-                    if (ManualWorkList.Count > 0)
-                    {
-                        w = ManualWorkList[0];
-                        ManualWorkList.RemoveAt(0);
-                    }
-                    else w = WorkQueue.Dequeue();
-                    #endregion
-                    while (bRepeat)
-                    {
-                        if (w != null)
+                        #region GetWork
+                        if (ManualWorkList.Count > 0)
                         {
-                            #region Send
-                            try
-                            {
-                                ser.DiscardInBuffer();
-                                ser.DiscardOutBuffer();
-                                ser.Write(w.data, 0, w.data.Length);
-                                ser.BaseStream.Flush();
-                            }
-                            catch (TimeoutException) { }
-                            #endregion
+                            w = ManualWorkList[0];
+                            ManualWorkList.RemoveAt(0);
+                        }
+                        else w = WorkQueue.Dequeue();
+                        #endregion
 
-                            DateTime nPrev = DateTime.Now;
-                            int gap = 0, nRecv = 0, nLen = 0;
-                            bRepeat = w.Repeat;
-
-                            if (w.data[0] != 0)//Broadcast
+                        while (bRepeat)
+                        {
+                            if (w != null)
                             {
-                                #region Read
-                                while (nRecv < w.ResponseByteCount)
+                                #region Send
+                                try
                                 {
-                                    try
-                                    {
-                                        nLen = ser.Read(baResponse, nRecv, w.ResponseByteCount);
-                                        nRecv += nLen;
-                                    }
-                                    catch (TimeoutException) { }
-                                    catch (System.IO.IOException) { }
-                                    gap = Convert.ToInt32((DateTime.Now - nPrev).TotalMilliseconds);
-                                    if (gap >= Timeout) break;
-                                    if (nRecv == w.ResponseByteCount) break;
+                                    ser.DiscardInBuffer();
+                                    ser.DiscardOutBuffer();
+                                    ser.Write(w.data, 0, w.data.Length);
+                                    ser.BaseStream.Flush();
                                 }
+                                catch (TimeoutException) { }
                                 #endregion
-                                if (gap < nTimeout)
+
+                                #region Receive
+                                DateTime nPrev = DateTime.Now;
+                                int gap = 0, nRecv = 0, nLen = 0;
+                                bRepeat = w.Repeat;
+
+                                if (w.data[0] != 0)//Broadcast
                                 {
-                                    try
+                                    #region Read
+                                    while (nRecv < w.ResponseByteCount)
                                     {
-                                        #region Proc
-                                        byte crcHi = 0, crcLo = 0;
-                                        GetCRC(baResponse, nRecv - 2, ref crcHi, ref crcLo);
-                                        if (crcHi == baResponse[nRecv - 2] && crcLo == baResponse[nRecv - 1])
+                                        try
                                         {
-                                            int Slave = baResponse[0];
-                                            int SendAddr = Convert.ToInt32((w.data[2] << 8) | (w.data[3]));
-                                            ModbusFunction Func = (ModbusFunction)baResponse[1];
-                                            switch (Func)
+                                            nLen = ser.Read(baResponse, nRecv, w.ResponseByteCount);
+                                            nRecv += nLen;
+                                        }
+                                        catch (TimeoutException) { }
+                                        catch (System.IO.IOException) { }
+                                        gap = Convert.ToInt32((DateTime.Now - nPrev).TotalMilliseconds);
+                                        if (gap >= Timeout) break;
+                                        if (nRecv == w.ResponseByteCount) break;
+                                    }
+                                    #endregion
+                                    if (gap < nTimeout)
+                                    {
+                                        try
+                                        {
+                                            #region Proc
+                                            byte crcHi = 0, crcLo = 0;
+                                            GetCRC(baResponse, nRecv - 2, ref crcHi, ref crcLo);
+                                            if (crcHi == baResponse[nRecv - 2] && crcLo == baResponse[nRecv - 1])
                                             {
-                                                case ModbusFunction.BITREAD_F1:
-                                                case ModbusFunction.BITREAD_F2:
-                                                    {
-                                                        int ByteCount = baResponse[2];
-                                                        byte[] baData = new byte[ByteCount];
-                                                        Array.Copy(baResponse, 3, baData, 0, ByteCount);
-                                                        BitArray ba = new BitArray(baData);
-
-                                                        #region Datas
-                                                        bool bChanged = false;
-                                                        for (int i = SendAddr; i < SendAddr + ba.Count; i++)
-                                                            if (Bits.ContainsKey(Slave) && Bits[Slave].ContainsKey(i))
-                                                                if (Bits[Slave][i] != ba[i - SendAddr])
-                                                                {
-                                                                    Bits[Slave][i] = ba[i - SendAddr];
-                                                                    bChanged = true;
-                                                                }
-
-                                                        if (bChanged && ValueChanged != null)
+                                                int Slave = baResponse[0];
+                                                int SendAddr = Convert.ToInt32((w.data[2] << 8) | (w.data[3]));
+                                                ModbusFunction Func = (ModbusFunction)baResponse[1];
+                                                switch (Func)
+                                                {
+                                                    case ModbusFunction.BITREAD_F1:
+                                                    case ModbusFunction.BITREAD_F2:
                                                         {
-                                                            if (frm != null) frm.Invoke(ValueChanged, new object[] { this, null });
-                                                            else ValueChanged.Invoke(this, null);
-                                                        }
-                                                        #endregion
-                                                        #region Remark
-                                                        /*
+                                                            int ByteCount = baResponse[2];
+                                                            byte[] baData = new byte[ByteCount];
+                                                            Array.Copy(baResponse, 3, baData, 0, ByteCount);
+                                                            BitArray ba = new BitArray(baData);
+
+                                                            #region Datas
+                                                            bool bChanged = false;
+                                                            for (int i = SendAddr; i < SendAddr + ba.Count; i++)
+                                                                if (Bits.ContainsKey(Slave) && Bits[Slave].ContainsKey(i))
+                                                                    if (Bits[Slave][i] != ba[i - SendAddr])
+                                                                    {
+                                                                        Bits[Slave][i] = ba[i - SendAddr];
+                                                                        bChanged = true;
+                                                                    }
+
+                                                            if (bChanged && ValueChanged != null)
+                                                            {
+                                                                if (frm != null) frm.Invoke(ValueChanged, new object[] { this, null });
+                                                                else ValueChanged.Invoke(this, null);
+                                                            }
+                                                            #endregion
+                                                            #region Remark
+                                                            /*
                                                         for (int i = SendAddr; i < SendAddr + ba.Count; i++)
                                                             if (DicBits.ContainsKey(Slave) && DicBits[Slave].ContainsKey(i))
                                                                 DicBits[Slave][i].Value = ba[i - SendAddr];
                                                         */
-                                                        #endregion
-                                                    }
-                                                    break;
-                                                case ModbusFunction.WORDREAD_F3:
-                                                case ModbusFunction.WORDREAD_F4:
-                                                    {
-                                                        int ByteCount = baResponse[2];
-                                                        int[] Datas = new int[ByteCount / 2];
-                                                        for (int i = 0; i < Datas.Length; i++)
-                                                            Datas[i] = Convert.ToUInt16(baResponse[3 + (i * 2)] << 8 | baResponse[4 + (i * 2)]);
-
-                                                        #region Datas
-                                                        bool bChanged = false;
-                                                        for (int i = SendAddr; i < SendAddr + Datas.Length; i++)
-                                                            if (Words.ContainsKey(Slave) && Words[Slave].ContainsKey(i))
-                                                                if (Words[Slave][i] != Datas[i - SendAddr])
-                                                                {
-                                                                    Words[Slave][i] = Datas[i - SendAddr];
-                                                                    bChanged = true;
-                                                                }
-
-                                                        if (bChanged && ValueChanged != null)
-                                                        {
-                                                            if (frm != null) frm.Invoke(ValueChanged, new object[] { this, null });
-                                                            else ValueChanged.Invoke(this, null);
+                                                            #endregion
                                                         }
-                                                        #endregion
-                                                        #region Remark
-                                                        /*
+                                                        break;
+                                                    case ModbusFunction.WORDREAD_F3:
+                                                    case ModbusFunction.WORDREAD_F4:
+                                                        {
+                                                            int ByteCount = baResponse[2];
+                                                            int[] Datas = new int[ByteCount / 2];
+                                                            for (int i = 0; i < Datas.Length; i++)
+                                                                Datas[i] = Convert.ToUInt16(baResponse[3 + (i * 2)] << 8 | baResponse[4 + (i * 2)]);
+
+                                                            #region Datas
+                                                            bool bChanged = false;
+                                                            for (int i = SendAddr; i < SendAddr + Datas.Length; i++)
+                                                                if (Words.ContainsKey(Slave) && Words[Slave].ContainsKey(i))
+                                                                    if (Words[Slave][i] != Datas[i - SendAddr])
+                                                                    {
+                                                                        Words[Slave][i] = Datas[i - SendAddr];
+                                                                        bChanged = true;
+                                                                    }
+
+                                                            if (bChanged && ValueChanged != null)
+                                                            {
+                                                                if (frm != null) frm.Invoke(ValueChanged, new object[] { this, null });
+                                                                else ValueChanged.Invoke(this, null);
+                                                            }
+                                                            #endregion
+                                                            #region Remark
+                                                            /*
                                                         for (int i = SendAddr; i < SendAddr + Datas.Length; i++)
                                                             if (DicWords.ContainsKey(Slave) && DicWords[Slave].ContainsKey(i))
                                                                 DicWords[Slave][i].Value = Datas[i - SendAddr];
                                                         */
-                                                        #endregion
-                                                    }
-                                                    break;
-                                                case ModbusFunction.BITWRITE_F5:
-                                                case ModbusFunction.WORDWRITE_F6:
-                                                    {
-                                                        int StartAddress = (baResponse[2] << 8) | baResponse[3];
-                                                        int Data = (baResponse[4] << 8) | baResponse[5];
-                                                    }
-                                                    break;
-                                                case ModbusFunction.MULTIBITWRITE_F15:
-                                                case ModbusFunction.MULTIWORDWRITE_F16:
-                                                    {
-                                                        int StartAddress = (baResponse[2] << 8) | baResponse[3];
-                                                        int Length = (baResponse[4] << 8) | baResponse[5];
-                                                    }
-                                                    break;
+                                                            #endregion
+                                                        }
+                                                        break;
+                                                    case ModbusFunction.BITWRITE_F5:
+                                                    case ModbusFunction.WORDWRITE_F6:
+                                                        {
+                                                            int StartAddress = (baResponse[2] << 8) | baResponse[3];
+                                                            int Data = (baResponse[4] << 8) | baResponse[5];
+                                                        }
+                                                        break;
+                                                    case ModbusFunction.MULTIBITWRITE_F15:
+                                                    case ModbusFunction.MULTIWORDWRITE_F16:
+                                                        {
+                                                            int StartAddress = (baResponse[2] << 8) | baResponse[3];
+                                                            int Length = (baResponse[4] << 8) | baResponse[5];
+                                                        }
+                                                        break;
+                                                }
                                             }
-                                        }
-                                        else
-                                        {
-                                            if (CRCError != null)
+                                            else
                                             {
-                                                if (frm != null) frm.Invoke(CRCError, new object[] { this, null });
-                                                else CRCError.Invoke(this, null);
+                                                if (CRCError != null)
+                                                {
+                                                    if (frm != null) frm.Invoke(CRCError, new object[] { this, null });
+                                                    else CRCError.Invoke(this, null);
+                                                }
                                             }
+                                            #endregion
+                                            bRepeat = false;
+                                        }
+                                        catch (System.OverflowException) { }
+                                    }
+                                    else
+                                    {
+                                        #region Timeout
+                                        if (TimeoutError != null)
+                                        {
+                                            if (frm != null) frm.Invoke(TimeoutError, new object[] { this, null });
+                                            else TimeoutError.Invoke(this, null);
+                                        }
+
+                                        nTimeoutCount++;
+                                        if (nTimeoutCount > 3)
+                                        {
+                                            nTimeoutCount = 0;
+                                            bRepeat = false;
                                         }
                                         #endregion
-                                        bRepeat = false;
-                                    }
-                                    catch (System.OverflowException) { }
-                                }
-                                else
-                                {
-                                    if (TimeoutError != null)
-                                    {
-                                        if (frm != null) frm.Invoke(TimeoutError, new object[] { this, null });
-                                        else TimeoutError.Invoke(this, null);
-                                    }
-
-                                    nTimeoutCount++;
-                                    if (nTimeoutCount > 3)
-                                    {
-                                        nTimeoutCount = 0;
-                                        bRepeat = false;
                                     }
                                 }
+                                else bRepeat = false;
+                                #endregion
                             }
-                            else bRepeat = false;
                         }
                     }
+                    else
+                    {
+                        //for (int i = 0; i < AutoWorkList.Count; i++) WorkQueue.Enqueue(AutoWorkList[i]);
+                        for (int i = 0; i < MonitorAddresses.Count; i++) WorkQueue.Enqueue(MonitorAddresses[i].GetWork());
+                    }
+                    Thread.Sleep(Interval);
                 }
-                else
-                {
-                    //for (int i = 0; i < AutoWorkList.Count; i++) WorkQueue.Enqueue(AutoWorkList[i]);
-                    for (int i = 0; i < MonitorAddresses.Count; i++) WorkQueue.Enqueue(MonitorAddresses[i].GetWork());
-                }
-                Thread.Sleep(Interval);
             }
+            catch (ObjectDisposedException) { }
 
             ser.Close();
         }
